@@ -1,0 +1,281 @@
+---
+title: "STAT 345 Midterm Project"
+font: 12pt
+author: "Dillon Koestler"
+date: "Due March 31"
+output:
+  ioslides_presentation: default
+  word_document: default
+  pdf_document: default
+  html_document: default
+---
+
+```{r, warning=FALSE, message=FALSE, include=FALSE}
+# Import libraries
+library(nbastatR)
+library(tidyverse)
+library(gganimate)
+library(ggalt)
+library(ggimage)
+library(ggpubr)
+library(magick)
+library(png)
+
+# Investigate structure of data
+dictionary_nba_names()
+nba_franchise_history()
+
+# Allow more data to be transferred
+Sys.setenv(VROOM_CONNECTION_SIZE=500072)
+
+# Shot chart plot using data from the ballR shiny app 
+source("https://raw.githubusercontent.com/toddwschneider/ballr/master/plot_court.R")
+source("https://raw.githubusercontent.com/toddwschneider/ballr/master/court_themes.R")
+plot_court()
+court_points = court_points %>% mutate_if(is.numeric, ~.*10)
+```
+
+
+
+```{r, include=FALSE}
+## Functions
+
+# for binning shot locations
+# Section shot locations into ten x and ten y locations
+# Locations now listed as the center of each color tile
+locX_between = function(df, bot, top){
+    mutate(df, locationX=if_else(between(locationX, bot, top), (bot-1 + top)/2, locationX))
+}
+
+locY_between = function(df, bot, top){
+    mutate(df, locationY=if_else(between(locationY, bot, top), (bot-1 + top)/2, locationY))
+}
+
+# Grand bin function
+# Bin all shot locations for a given data frame
+grand_bin = function(df){
+    df = locX_between(df, -249, -200) 
+    df = locX_between(df, -199, -150)
+    df = locX_between(df, -149, -100) 
+    df = locX_between(df, -99, -50) 
+    df = locX_between(df, -49, 0)
+    df = locX_between(df, 1, 50) 
+    df = locX_between(df, 51, 100)
+    df = locX_between(df, 101, 150)
+    df = locX_between(df, 151, 200)
+    df = locX_between(df, 201, 250)
+    
+    df = locY_between(df, 1, 50)
+    df = locY_between(df, 51, 100)
+    df = locY_between(df, 101, 150)
+    df = locY_between(df, 151, 200)
+    df = locY_between(df, 201, 250)
+    df = locY_between(df, 251, 300)
+    df = locY_between(df, 301, 350)
+    df = locY_between(df, 351, 400)
+    df = locY_between(df, 401, 450)
+    df = locY_between(df, 451, 500)
+}
+
+# for keeping shots only on scoring side of half-court
+# Most, if not all, shots from beyond half-court were missed. I felt that showing data for shots attempted, though regularly missed was unnecessary.
+half_court_shots = function(df){
+    df %>% mutate(locationY = locationY + 40) %>% 
+    filter(locationY < 451) %>% 
+    filter(locationY > 0)
+}
+
+# for creating plot
+
+# Store wooden flooring image for plot backgrounds
+img = png::readPNG("floor.png")
+
+# Function for creating shot charts for each year
+court_plot = function(df, t_str){
+    ggplot(df, aes(x=locationX, y=locationY)) + 
+    background_image(img) +
+    annotate("rect", xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf, fill="white", alpha=0.01) + 
+    scale_fill_manual(values = c("#FFC72C","#1D428A"), name="Shot Success", labels=c("Missed", "Made")) + 
+    coord_equal() + 
+    geom_tile(aes(fill=isShotMade), alpha=0.5, width=50) + # alpha=0.5 to create a color gradient effect. Dark navy: shots made frequently. Bright gold: shots missed frequently.
+    geom_path(data = court_points, aes(x = x, y = y, group = desc), color = "white") + 
+    xlim(-260, 260) + 
+    labs(title=t_str, x="", y="") + 
+    theme(axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank(), 
+          axis.title.y=element_blank(), axis.text.y=element_blank(), axis.ticks.y=element_blank(), 
+          panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+          panel.background = element_rect(fill="#dfbb85", color="black"),
+          legend.position = "bottom")
+}
+```
+
+
+
+```{r, message=FALSE, include=FALSE}
+## Data cleaning and joining
+
+# Return Warriors shot data for 2004-2023 seasons
+warriors_04 = teams_shots(teams = "Warriors", seasons = 2004)
+warriors_05 = teams_shots(teams = "Warriors", seasons = 2005)
+warriors_06 = teams_shots(teams = "Warriors", seasons = 2006)
+warriors_07 = teams_shots(teams = "Warriors", seasons = 2007)
+warriors_08 = teams_shots(teams = "Warriors", seasons = 2008)
+warriors_09 = teams_shots(teams = "Warriors", seasons = 2009)
+warriors_10 = teams_shots(teams = "Warriors", seasons = 2010)
+warriors_11 = teams_shots(teams = "Warriors", seasons = 2011)
+warriors_12 = teams_shots(teams = "Warriors", seasons = 2012)
+warriors_13 = teams_shots(teams = "Warriors", seasons = 2013)
+warriors_14 = teams_shots(teams = "Warriors", seasons = 2014)
+warriors_15 = teams_shots(teams = "Warriors", seasons = 2015)
+warriors_16 = teams_shots(teams = "Warriors", seasons = 2016)
+warriors_17 = teams_shots(teams = "Warriors", seasons = 2017)
+warriors_18 = teams_shots(teams = "Warriors", seasons = 2018)
+warriors_19 = teams_shots(teams = "Warriors", seasons = 2019)
+warriors_20 = teams_shots(teams = "Warriors", seasons = 2020)
+warriors_21 = teams_shots(teams = "Warriors", seasons = 2021)
+warriors_22 = teams_shots(teams = "Warriors", seasons = 2022)
+warriors_23 = teams_shots(teams = "Warriors", seasons = 2023)
+
+# Select desired columns
+warriors_04 = warriors_04 %>% select(yearSeason, locationX, locationY, isShotMade)
+warriors_05 = warriors_05 %>% select(yearSeason, locationX, locationY, isShotMade)
+warriors_06 = warriors_06 %>% select(yearSeason, locationX, locationY, isShotMade)
+warriors_07 = warriors_07 %>% select(yearSeason, locationX, locationY, isShotMade)
+warriors_08 = warriors_08 %>% select(yearSeason, locationX, locationY, isShotMade)
+warriors_09 = warriors_09 %>% select(yearSeason, locationX, locationY, isShotMade)
+warriors_10 = warriors_10 %>% select(yearSeason, locationX, locationY, isShotMade)
+warriors_11 = warriors_11 %>% select(yearSeason, locationX, locationY, isShotMade)
+warriors_12 = warriors_12 %>% select(yearSeason, locationX, locationY, isShotMade)
+warriors_13 = warriors_13 %>% select(yearSeason, locationX, locationY, isShotMade)
+warriors_14 = warriors_14 %>% select(yearSeason, locationX, locationY, isShotMade)
+warriors_15 = warriors_15 %>% select(yearSeason, locationX, locationY, isShotMade)
+warriors_16 = warriors_16 %>% select(yearSeason, locationX, locationY, isShotMade)
+warriors_17 = warriors_17 %>% select(yearSeason, locationX, locationY, isShotMade)
+warriors_18 = warriors_18 %>% select(yearSeason, locationX, locationY, isShotMade)
+warriors_19 = warriors_19 %>% select(yearSeason, locationX, locationY, isShotMade)
+warriors_20 = warriors_20 %>% select(yearSeason, locationX, locationY, isShotMade)
+warriors_21 = warriors_21 %>% select(yearSeason, locationX, locationY, isShotMade)
+warriors_22 = warriors_22 %>% select(yearSeason, locationX, locationY, isShotMade)
+warriors_23 = warriors_23 %>% select(yearSeason, locationX, locationY, isShotMade)
+
+# Combine data frames
+war_list = list(warriors_04, warriors_05, warriors_06, warriors_07, warriors_08, 
+                warriors_09, warriors_10, warriors_11, warriors_12, warriors_13, 
+                warriors_14, warriors_15, warriors_16, warriors_17, warriors_18, 
+                warriors_19, warriors_20, warriors_21, warriors_22, warriors_23)
+warriors = war_list %>% reduce(full_join, by=colnames(war_list))
+warriors = warriors[order(warriors$yearSeason),]
+```
+
+
+
+```{r, include=FALSE}
+## Format shot locations
+
+# Remove shots from behind half-court and from off the court
+warriors = half_court_shots(warriors)
+
+# Bin shot locations
+warriors = grand_bin(warriors)
+```
+
+
+
+```{r, include=FALSE}
+## Create court plots
+
+court_fac = court_plot(warriors, "Golden State Warriors Shot Charts") + 
+    facet_wrap(~yearSeason, nrow=4) # Faceted plots by year. Each year is separate and part of the collective image.
+```
+
+
+
+```{r, include=FALSE}
+## Save court plots to directory
+
+ggsave(court_fac, height = 10 , width = 10, device = "png", 
+       path = "/Users/dillo/OneDrive/Desktop/UW La Crosse/Year 3/Spring/STAT 345/Projects",
+       filename = "court_fac.png") # Saved plots to personal directory for quick viewing in large scale while working. This was easier than running code in the console and resizing the plots in the viewer in R studio because I did not have to wait as long for loading time are rendering when the viewing window was resized.
+```
+
+
+## Shot Charts
+
+```{r, warning=FALSE, echo=FALSE}
+court_fac
+```
+
+## Findings
+
+- Prior to 2010, most made shots are within the 3-point arc.
+- As the years increase, shots attempted and made further away from the basket are more common overall.
+- The year with the most made shots, regardless of location, is 2016.
+- Shots within the paint (close to the basket) were very successful across years.
+- Shots from the outside thirds of the court were more common in some years while shots from the middle third of the court were most common overall.
+
+## Findings in Depth
+- From the year 2010 and onward, we see an overall increase in made shots from behind the 3-point arc. This aligns with the overall trends noticed in the NBA by media and broadcasters. Since Steph Curry's introduction to the league in the 2009-2010 season, many teams, not just the warriors, have increased their made shots from 3-point range due to increased practice and offensive scheming around 3-point shot attempts.
+- Regardless of whether the shots are missed or made, as the years increase (especially within the past eight years), more shots are attempted from further away from the basket, even toward the half-court line. As NBA players became more comfortable shooting from 3-point distance as stated above, it seems natural that some would test the limits further, leading to more shots attempted (and darker colors on the shot charts) from distance.
+
+## Findings in Depth cont.
+- The shot chart for the 2016 season has the most heavily-dark navy squares. There are also more generally navy squares than gold squares on the chart. This suggests that the Warriors made the most shots over the course of this season. 
+- Regardless of season, shots close to the basket were made at a high rate. Much of this is likely due to dunking the basketball. Putting the ball directly though the rim while close to it is the most-likely shot to be made in the sport. Dunking has always been an extremely simple and incredibly popular way to score the basketball. 
+
+## Findings in Depth cont.
+- As mentioned above with dunks and close shots, shots from the top of the 3-point arc are also very common because the backboard is square with the shooting player. 3-point shots from the corner have also been popular because it is the closest 3-point shot, but players who take these shots are usually specialists who only shoot these shots, not every player on the team. This can be seen in a few of the charts that feature navy squares around the corners of the court (2005, 2011, 2013, 2015, 2016). 
+
+
+```{r, include=FALSE, warning=FALSE}
+## Additional Study
+
+library(ggrepel)
+
+# Return Warriors gamelog data for 2015-2016 season
+war_gamelogs = game_logs(seasons = 2016, league = "NBA", result_types = "player", season_types = "Regular Season") %>%
+    filter(nameTeam %in% "Golden State Warriors") %>%
+    select("namePlayer", "fgm", "fga", "pctFG", "fg3m", "fg3a", "pctFG3", "fg2m", "fg2a", "pctFG2") %>% 
+    group_by(namePlayer) %>% 
+    arrange(namePlayer) %>%
+    mutate(tot_fgm = sum(fgm), tot_fga = sum(fga), 
+           tot_fg3m = sum(fg3m), tot_fg3a = sum(fg3a), 
+           tot_fg2m = sum(fg2m), tot_fg2a = sum(fg2a)) %>% # Add columns for total field goals made and attempted for each shot type
+    mutate(avg_pctFG = tot_fgm/tot_fga, 
+           avg_pctFG3 = tot_fg3m/tot_fg3a, 
+           avg_pctFG2 = tot_fg2m/tot_fg2a) %>% # Add columns for field goal percents for 2-point and 3-point shots
+    mutate(avg_pctFG3 = ifelse(tot_fg3a < 10, 0, avg_pctFG3)) %>% # Sets minimum threshold for 3-point shots taken
+    filter(duplicated(namePlayer) == FALSE) # Remove overlaid points on graph
+    
+
+war_fgpct_plot = war_gamelogs %>% ggplot(aes(x=avg_pctFG2, y=avg_pctFG3)) + 
+    geom_point() + 
+    geom_text_repel(aes(label=namePlayer)) + 
+    geom_hline(yintercept=.354, color="#1D428A") + # Horizontal line at league average 3-point percentage
+    geom_vline(xintercept=.491, color="#FFC72C") + # Vertical line at leage average 2-point percentage
+    labs(title="2016 Warriors Shot Percentages by Player", 
+         x="2-Point Field Goal Percent", 
+         y="3-Point Field Goal Percent", 
+         caption="Minimum 10 shots attempted of each type") + 
+    theme_bw()
+```
+
+## Additional Findings  
+
+```{r, echo=FALSE}
+war_fgpct_plot
+```
+Golden State finished 73-9 in the 2015-2016 season, the most successful regular season in NBA history. To further illustrate the NBA's trend toward 3-point shooting, notice:
+
+## Additional Findings Described
+- Nine of the sixteen players that played for the Warriors this season had an average or above-average 3-point shooting percentage.
+- The two players with the highest 3-point percentages on the team (Curry, 0.454 and Thompson, 0.425) scored the second and tenth most points of all players this season. Their shooting percentages were second and fifth best also.
+- Additionally, twelve out of sixteen players had an above-average 2-point shooting percentage.
+- The player with the highest 3-point percentage on the team was Stephen Curry, who won the NBA Most Valuable Player award by unanimous vote this season.
+
+
+```{r, include=FALSE}
+## GitHub
+
+#usethis::use_git_config(user.name = "dillonkoestler", user.email = "dillonkoestler@gmail.com")
+#usethis::create_github_token() 
+#credentials::set_github_pat("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")
+```
